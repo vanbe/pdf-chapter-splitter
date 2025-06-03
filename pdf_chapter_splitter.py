@@ -55,14 +55,17 @@ def calculate_page_ranges(outline_info, total_pages):
 
     return sections
 
-def perform_pdf_split(reader, sections, output_dir):
+def perform_pdf_split(reader, sections, output_dir, add_sequence=True):
     """
     根据计算出的页码范围将PDF拆分为多个文件。
     """
     os.makedirs(output_dir, exist_ok=True)
     print(f"正在将拆分后的PDF文件保存到：{output_dir}")
 
-    for section in sections:
+    total_sections = len(sections)
+    num_digits = len(str(total_sections))
+
+    for i, section in enumerate(sections):
         writer = PyPDF2.PdfWriter()
         start_page_index = section['start_page'] - 1 # 转换为0-based
         end_page_index = section['end_page'] - 1     # 转换为0-based
@@ -72,19 +75,25 @@ def perform_pdf_split(reader, sections, output_dir):
             print(f"警告：跳过无效页码范围的部分 '{section['name']}' ({section['start_page']}-{section['end_page']})")
             continue
 
-        for i in range(start_page_index, end_page_index + 1):
-            writer.add_page(reader.pages[i])
+        for page_num in range(start_page_index, end_page_index + 1):
+            writer.add_page(reader.pages[page_num])
 
         # 清理文件名，移除非法字符
         cleaned_name = re.sub(r'[\\/:*?"<>|]', '', section['name'])
-        output_filename = f"{cleaned_name}.pdf"
+        
+        if add_sequence:
+            sequence_prefix = f"{i+1:0{num_digits}d}_"
+            output_filename = f"{sequence_prefix}{cleaned_name}.pdf"
+        else:
+            output_filename = f"{cleaned_name}.pdf"
+            
         output_filepath = os.path.join(output_dir, output_filename)
 
         with open(output_filepath, 'wb') as output_pdf:
             writer.write(output_pdf)
         print(f"已创建文件: {output_filename}, 原始页码: {section['start_page']}-{section['end_page']}")
 
-def split_pdf_by_chapters(pdf_path, output_dir=None): # 默认值改为 None
+def split_pdf_by_chapters(pdf_path, output_dir=None, add_sequence=True): # 默认值改为 None
     """
     根据PDF书签自动拆分PDF文件。
     """
@@ -129,7 +138,7 @@ def split_pdf_by_chapters(pdf_path, output_dir=None): # 默认值改为 None
                 print("未识别到任何可拆分的部分。")
                 return
 
-            perform_pdf_split(reader, sections, final_output_dir) # 使用新的输出目录
+            perform_pdf_split(reader, sections, final_output_dir, add_sequence) # 使用新的输出目录
             print("\nPDF拆分完成！")
 
     except Exception as e:
@@ -140,7 +149,9 @@ if __name__ == "__main__":
     parser.add_argument("input_pdf", help="要拆分的PDF文件路径。")
     parser.add_argument("-o", "--output_dir", default=None, # 默认值改为 None
                         help="拆分后PDF文件的输出目录 (默认为原始PDF文件同目录下的子文件夹)。")
+    parser.add_argument("--no-sequence", action="store_true",
+                        help="不为拆分后的文件添加序列号前缀。")
     
     args = parser.parse_args()
     
-    split_pdf_by_chapters(args.input_pdf, args.output_dir)
+    split_pdf_by_chapters(args.input_pdf, args.output_dir, add_sequence=not args.no_sequence)
